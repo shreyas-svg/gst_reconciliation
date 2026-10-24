@@ -1,0 +1,812 @@
+import os
+import subprocess
+from pathlib import Path
+
+# Paths
+WORKSPACE = Path(__file__).resolve().parent
+HTML_PATH = WORKSPACE / "reconciliation_code_explanation.html"
+PDF_PATH = WORKSPACE / "GST_Reconciliation_Code_Explanation.pdf"
+EDGE_EXE = r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
+
+html_content = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ReconcilePro Engine Documentation - reconcile.py</title>
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+    @page {
+        size: A4 portrait;
+        margin: 18mm 16mm 18mm 16mm;
+        @bottom-right {
+            content: "Page " counter(page);
+            font-size: 8.5pt;
+            color: #64748b;
+            font-family: 'Inter', sans-serif;
+        }
+    }
+
+    * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+    }
+
+    body {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        color: #1e293b;
+        background-color: #ffffff;
+        font-size: 10pt;
+        line-height: 1.55;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    .page {
+        page-break-after: always;
+        break-after: page;
+        padding-bottom: 20px;
+    }
+
+    .page:last-child {
+        page-break-after: avoid;
+        break-after: avoid;
+    }
+
+    /* Cover / Header Banner */
+    .header-banner {
+        background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 60%, #2563eb 100%);
+        color: #ffffff;
+        padding: 28px 24px;
+        border-radius: 12px;
+        margin-bottom: 22px;
+        box-shadow: 0 4px 14px rgba(15, 23, 42, 0.15);
+    }
+
+    .header-tag {
+        display: inline-block;
+        background: rgba(255, 255, 255, 0.16);
+        color: #93c5fd;
+        font-size: 8pt;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        padding: 4px 10px;
+        border-radius: 9999px;
+        margin-bottom: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .header-banner h1 {
+        font-size: 22pt;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+        line-height: 1.2;
+        margin-bottom: 8px;
+    }
+
+    .header-banner p {
+        color: #cbd5e1;
+        font-size: 10.5pt;
+        max-width: 90%;
+        line-height: 1.45;
+    }
+
+    .meta-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 12px;
+        margin-top: 18px;
+        padding-top: 14px;
+        border-top: 1px solid rgba(255, 255, 255, 0.18);
+        font-size: 8.5pt;
+    }
+
+    .meta-item span {
+        display: block;
+        color: #94a3b8;
+        font-size: 7.5pt;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 2px;
+    }
+
+    .meta-item strong {
+        color: #ffffff;
+        font-weight: 600;
+    }
+
+    /* Typography */
+    h2 {
+        font-size: 14pt;
+        font-weight: 700;
+        color: #0f172a;
+        margin-top: 20px;
+        margin-bottom: 10px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        border-bottom: 2px solid #e2e8f0;
+        padding-bottom: 6px;
+    }
+
+    h2 .num {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 22px;
+        height: 22px;
+        background-color: #2563eb;
+        color: white;
+        border-radius: 6px;
+        font-size: 9pt;
+        font-weight: 700;
+    }
+
+    h3 {
+        font-size: 11pt;
+        font-weight: 600;
+        color: #1e3a8a;
+        margin-top: 14px;
+        margin-bottom: 6px;
+    }
+
+    p {
+        margin-bottom: 8px;
+        color: #334155;
+    }
+
+    /* Cards and Callouts */
+    .card {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 12px 14px;
+        margin-bottom: 12px;
+    }
+
+    .card.blue {
+        border-left: 4px solid #2563eb;
+        background: #f0f7ff;
+    }
+
+    .card.green {
+        border-left: 4px solid #10b981;
+        background: #f0fdf4;
+    }
+
+    .card.amber {
+        border-left: 4px solid #f59e0b;
+        background: #fffbeb;
+    }
+
+    .card.rose {
+        border-left: 4px solid #e11d48;
+        background: #fff1f2;
+    }
+
+    .card.purple {
+        border-left: 4px solid #8b5cf6;
+        background: #faf5ff;
+    }
+
+    .callout-title {
+        font-weight: 700;
+        font-size: 9.5pt;
+        margin-bottom: 4px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .card.blue .callout-title { color: #1e40af; }
+    .card.green .callout-title { color: #065f46; }
+    .card.amber .callout-title { color: #92400e; }
+    .card.rose .callout-title { color: #9f1239; }
+    .card.purple .callout-title { color: #5b21b6; }
+
+    /* Code styling */
+    pre, code {
+        font-family: 'JetBrains Mono', Consolas, Monaco, monospace;
+    }
+
+    code.inline {
+        background-color: #f1f5f9;
+        color: #0f172a;
+        padding: 1.5px 5px;
+        border-radius: 4px;
+        font-size: 8.5pt;
+        border: 1px solid #e2e8f0;
+    }
+
+    pre.code-block {
+        background-color: #0f172a;
+        color: #f8fafc;
+        padding: 12px 14px;
+        border-radius: 8px;
+        font-size: 8pt;
+        line-height: 1.45;
+        overflow-x: hidden;
+        white-space: pre-wrap;
+        margin: 8px 0 12px 0;
+        border: 1px solid #1e293b;
+    }
+
+    .kw { color: #f472b6; font-weight: 600; }
+    .fn { color: #60a5fa; font-weight: 600; }
+    .str { color: #34d399; }
+    .num-lit { color: #fbbf24; }
+    .cm { color: #94a3b8; font-style: italic; }
+    .cls { color: #a78bfa; font-weight: 600; }
+
+    /* Status Badges */
+    .badge {
+        display: inline-block;
+        padding: 2px 7px;
+        border-radius: 4px;
+        font-size: 7.5pt;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+    }
+
+    .badge-match { background-color: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; }
+    .badge-mismatch { background-color: #fef3c7; color: #b45309; border: 1px solid #fde68a; }
+    .badge-missing { background-color: #fee2e2; color: #b91c1c; border: 1px solid #fecaca; }
+    .badge-extra { background-color: #f3e8ff; color: #6b21a8; border: 1px solid #e9d5ff; }
+
+    /* Tables */
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 10px 0 14px 0;
+        font-size: 8.5pt;
+    }
+
+    th, td {
+        padding: 7px 10px;
+        border: 1px solid #cbd5e1;
+        text-align: left;
+    }
+
+    th {
+        background-color: #f1f5f9;
+        color: #0f172a;
+        font-weight: 600;
+        font-size: 8.5pt;
+    }
+
+    tr:nth-child(even) td {
+        background-color: #f8fafc;
+    }
+
+    /* Steps list */
+    .step-list {
+        list-style: none;
+        margin: 8px 0 12px 0;
+    }
+
+    .step-list li {
+        position: relative;
+        padding-left: 26px;
+        margin-bottom: 8px;
+        color: #334155;
+    }
+
+    .step-list li::before {
+        content: counter(step-counter);
+        counter-increment: step-counter;
+        position: absolute;
+        left: 0;
+        top: 1px;
+        width: 18px;
+        height: 18px;
+        background-color: #e0e7ff;
+        color: #3730a3;
+        border-radius: 50%;
+        font-size: 7.5pt;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .step-list {
+        counter-reset: step-counter;
+    }
+
+    /* Diagram / Architecture Box */
+    .diagram-box {
+        background: #ffffff;
+        border: 1.5px dashed #94a3b8;
+        border-radius: 8px;
+        padding: 12px;
+        margin: 10px 0;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 8pt;
+        color: #0f172a;
+        line-height: 1.4;
+    }
+
+    /* Two column grid */
+    .grid-2 {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        margin: 8px 0;
+    }
+
+    .footer-note {
+        margin-top: 14px;
+        padding-top: 8px;
+        border-top: 1px solid #e2e8f0;
+        font-size: 8pt;
+        color: #64748b;
+        display: flex;
+        justify-content: space-between;
+    }
+</style>
+</head>
+<body>
+
+<!-- ================= PAGE 1: ARCHITECTURE & HIGH-LEVEL OVERVIEW ================= -->
+<div class="page">
+    <div class="header-banner">
+        <div class="header-tag">ReconcilePro Core Engine &bull; Code Technical Specification</div>
+        <h1>reconcile.py — GST Reconciliation Engine</h1>
+        <p>A comprehensive functional walkthrough of the automated reconciliation logic, schema normalization, mathematical set partitioning, and statutory discrepancy classification.</p>
+        <div class="meta-grid">
+            <div class="meta-item"><span>Target File</span><strong>reconcile.py</strong></div>
+            <div class="meta-item"><span>Module Path</span><strong>backend/reconciliation</strong></div>
+            <div class="meta-item"><span>Python Version</span><strong>Python 3.10+ (Pandas)</strong></div>
+            <div class="meta-item"><span>Domain</span><strong>GST MSME Compliance</strong></div>
+        </div>
+    </div>
+
+    <h2><span class="num">1</span> Executive Summary & Architectural Role</h2>
+    <p>
+        The module <code class="inline">backend/reconciliation/reconcile.py</code> represents the computational nucleus of the <strong>ReconcilePro</strong> compliance platform. Under Indian Goods and Services Tax regulations, registered taxpayers must reconcile their internal accounting ledgers against government portal filings on a periodic basis to claim <strong>Input Tax Credit (ITC)</strong> and avoid statutory penalties under Section 16(2)(aa) and Section 50 of the CGST Act.
+    </p>
+
+    <div class="grid-2">
+        <div class="card blue">
+            <div class="callout-title">Outward Reconciliation (Sales)</div>
+            <p style="font-size:8.5pt; margin:0;">
+                Compares internal <strong>Sales Register</strong> against filed <strong>GSTR-1</strong>. Identifies unfiled customer invoices (underreported tax liability) or duplicate tax bookings.
+            </p>
+        </div>
+        <div class="card purple">
+            <div class="callout-title">Inward Reconciliation (Purchases)</div>
+            <p style="font-size:8.5pt; margin:0;">
+                Compares internal <strong>Purchase Register</strong> against counterparty auto-populated <strong>GSTR-2A / GSTR-2B</strong> returns. Protects ineligible ITC claims.
+            </p>
+        </div>
+    </div>
+
+    <h3>Mathematical Engine Architecture</h3>
+    <p>The algorithm enforces a 3-way disjoint set partition across the universe of invoice identifiers:</p>
+
+    <div class="diagram-box">
+┌─────────────────────────────────────────────────────────────────────────────────────────────┐
+│                           Universe of Normalized Invoices (U)                              │
+│                                                                                             │
+│       ┌──────────────────────┐   Intersection   ┌──────────────────────┐                    │
+│       │   Internal Register  │   (Common Inv)   │    GST Portal File   │                    │
+│       │        (S_my)        │ ┌──────────────┐ │       (S_gst)        │                    │
+│       │                      │ │  S_my ∩ S_gst│ │                      │                    │
+│       │   [only_my]          │ │              │ │   [only_gst]         │                    │
+│       │   MISSING_IN_GST     │ │ 1:1 vs Dupl. │ │   EXTRA_IN_GST       │                    │
+│       │   (Unfiled/Delayed)  │ │ MATCH /      │ │   (Omitted in Books  │                    │
+│       │                      │ │ MISMATCH     │ │    or Wrong GSTIN)   │                    │
+│       └──────────────────────┘ └──────────────┘ └──────────────────────┘                    │
+└─────────────────────────────────────────────────────────────────────────────────────────────┘
+    </div>
+
+    <h3>Classification Taxonomy</h3>
+    <table>
+        <thead>
+            <tr>
+                <th style="width:22%;">Status Category</th>
+                <th style="width:30%;">Condition / Trigger</th>
+                <th style="width:48%;">Compliance Implication & Impact</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><span class="badge badge-match">MATCH</span></td>
+                <td><code class="inline">tv_diff == 0 and gst_diff == 0</code></td>
+                <td>Invoice verified. Values coincide precisely between books and GST portal. Zero audit risk.</td>
+            </tr>
+            <tr>
+                <td><span class="badge badge-mismatch">MISMATCH</span></td>
+                <td><code class="inline">tv_diff != 0 or gst_diff != 0</code></td>
+                <td>Taxable value or GST calculation discrepancy. Suggests data entry typos, unrecorded credit notes, or rate discrepancies.</td>
+            </tr>
+            <tr>
+                <td><span class="badge badge-mismatch">DUPLICATE</span></td>
+                <td><code class="inline">n_my &gt; 1 or n_gst &gt; 1</code></td>
+                <td>Duplicate invoice numbers recorded. Multi-row preserve algorithm isolates each duplicate to prevent silent data drop.</td>
+            </tr>
+            <tr>
+                <td><span class="badge badge-missing">MISSING_IN_GST</span></td>
+                <td><code class="inline">inv in S_my - S_gst</code></td>
+                <td>Present in books, absent on portal. For sales: unfiled return. For purchases: vendor failed to file GSTR-1, blocking ITC.</td>
+            </tr>
+            <tr>
+                <td><span class="badge badge-extra">EXTRA_IN_GST</span></td>
+                <td><code class="inline">inv in S_gst - S_my</code></td>
+                <td>Present on portal, missing in books. Possible unrecorded purchase, wrong recipient GSTIN, or timing difference.</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div class="footer-note">
+        <span>ReconcilePro Platform Documentation</span>
+        <span>Module: backend/reconciliation/reconcile.py &bull; Page 1</span>
+    </div>
+</div>
+
+<!-- ================= PAGE 2: FUNCTION 1 (_extract_gstin) & RECONCILE INITIALIZATION ================= -->
+<div class="page">
+    <h2><span class="num">2</span> Function 1: <code class="inline">_extract_gstin(row)</code></h2>
+    <p>
+        A helper function designed to extract and normalize the 15-character Goods and Services Taxpayer Identification Number (GSTIN) from heterogeneous tabular records.
+    </p>
+
+    <pre class="code-block"><span class="kw">def</span> <span class="fn">_extract_gstin</span>(row) -&gt; <span class="cls">str</span>:
+    <span class="kw">if</span> <span class="fn">hasattr</span>(row, <span class="str">"get"</span>):
+        <span class="kw">return</span> <span class="fn">str</span>(row.<span class="fn">get</span>(<span class="str">"gstin"</span>) <span class="kw">or</span> row.<span class="fn">get</span>(<span class="str">"customer_gstin"</span>) <span class="kw">or</span> row.<span class="fn">get</span>(<span class="str">"supplier_gstin"</span>) <span class="kw">or</span> <span class="str">""</span>).<span class="fn">strip</span>()
+    <span class="kw">return</span> <span class="str">""</span></pre>
+
+    <div class="card blue">
+        <div class="callout-title">Technical Deep Dive & Design Rationale</div>
+        <ol class="step-list">
+            <li><strong>Polymorphic Type Guarding:</strong> Evaluates <code class="inline">hasattr(row, "get")</code> to seamlessly accept either a Python <code class="inline">dict</code> or a Pandas <code class="inline">Series</code> (both implement <code class="inline">.get()</code>). Safely returns an empty string if passed primitives or nulls.</li>
+            <li><strong>Short-Circuit Priority Resolution:</strong> Uses Python's boolean operator chain (<code class="inline">or</code>) to evaluate candidate columns in priority order:
+                <br>&bull; <code class="inline">gstin</code>: Generic standard column name.
+                <br>&bull; <code class="inline">customer_gstin</code>: Typical outward supply identifier (Sales Register, GSTR-1 B2B).
+                <br>&bull; <code class="inline">supplier_gstin</code>: Typical inward supply identifier (Purchase Register, GSTR-2A/2B).
+            </li>
+            <li><strong>Sanitization & Defensive Formatting:</strong> Casts the extracted object to <code class="inline">str</code> and executes <code class="inline">.strip()</code> to eliminate trailing spaces, carriage returns, or newline artifacts imported from CSV/Excel files.</li>
+        </ol>
+    </div>
+
+    <h2><span class="num">3</span> Function 2: <code class="inline">reconcile(my_source, gst_source)</code> — Core Engine</h2>
+    <p>
+        The primary reconciliation orchestrator. Accepts two heterogeneous data sources (internal books vs GST filings) and outputs a unified discrepancy audit DataFrame.
+    </p>
+
+    <h3>Phase 1 & 2: Source Ingestion and Defensive Schema Initialization</h3>
+    <pre class="code-block"><span class="kw">def</span> <span class="fn">reconcile</span>(my_source, gst_source):
+    <span class="cm"># Phase 1: Dual Input Support (Pandas DataFrame or File Path)</span>
+    <span class="kw">if</span> <span class="fn">isinstance</span>(my_source, pd.DataFrame):
+        my_df = my_source.<span class="fn">copy</span>()
+    <span class="kw">else</span>:
+        my_path = my_source <span class="kw">if</span> <span class="fn">isinstance</span>(my_source, Path) <span class="kw">else</span> (DATA / my_source)
+        my_df = pd.<span class="fn">read_csv</span>(my_path)
+
+    <span class="kw">if</span> <span class="fn">isinstance</span>(gst_source, pd.DataFrame):
+        gst_df = gst_source.<span class="fn">copy</span>()
+    <span class="kw">else</span>:
+        gst_path = gst_source <span class="kw">if</span> <span class="fn">isinstance</span>(gst_source, Path) <span class="kw">else</span> (DATA / gst_source)
+        gst_df = pd.<span class="fn">read_csv</span>(gst_path)
+
+    <span class="cm"># Phase 2: Schema Enforcement &amp; Defaulting</span>
+    <span class="kw">for</span> col <span class="kw">in</span> [<span class="str">"invoice_no"</span>, <span class="str">"invoice_date"</span>, <span class="str">"gstin"</span>, <span class="str">"taxable_value"</span>, <span class="str">"gst_amount"</span>]:
+        <span class="kw">if</span> col <span class="kw">not in</span> my_df.columns:
+            my_df[col] = pd.<span class="cls">Series</span>(dtype=<span class="cls">object</span>)
+        <span class="kw">if</span> col <span class="kw">not in</span> gst_df.columns:
+            gst_df[col] = pd.<span class="cls">Series</span>(dtype=<span class="cls">object</span>)
+
+    my_df[<span class="str">"invoice_no"</span>] = my_df[<span class="str">"invoice_no"</span>].<span class="fn">astype</span>(<span class="cls">str</span>).str.<span class="fn">strip</span>()
+    gst_df[<span class="str">"invoice_no"</span>] = gst_df[<span class="str">"invoice_no"</span>].<span class="fn">astype</span>(<span class="cls">str</span>).str.<span class="fn">strip</span>()
+
+    <span class="cm"># Filter empty placeholder / blank rows</span>
+    my_df = my_df[my_df[<span class="str">"invoice_no"</span>] != <span class="str">""</span>].<span class="fn">copy</span>() <span class="kw">if not</span> my_df.empty <span class="kw">else</span> my_df
+    gst_df = gst_df[gst_df[<span class="str">"invoice_no"</span>] != <span class="str">""</span>].<span class="fn">copy</span>() <span class="kw">if not</span> gst_df.empty <span class="kw">else</span> gst_df</pre>
+
+    <div class="card green">
+        <div class="callout-title">Critical Architectural Highlights in Phase 1 & 2</div>
+        <ul style="padding-left:16px; font-size:8.5pt;">
+            <li><strong>In-Memory Copy Safety:</strong> Using <code class="inline">.copy()</code> guarantees functional purity; caller DataFrames (such as those passed from FastAPI route handlers) are not mutated by column injection or trimming.</li>
+            <li><strong>Polymorphic Ingestion:</strong> Supports both CLI offline testing (loading CSVs from disk via <code class="inline">DATA / filename</code>) and web application execution (passing filtered database query results directly as DataFrames).</li>
+            <li><strong>Defensive Column Imputation:</strong> Proactively injects mandatory columns if omitted in user uploads, preventing downstream <code class="inline">KeyError</code> application crashes.</li>
+            <li><strong>String Coercion:</strong> Converts numeric invoice numbers (e.g., <code class="inline">1001</code> parsed as float or integer) into clean stripped strings to avoid type-mismatch hash collisions in set operations.</li>
+        </ul>
+    </div>
+
+    <div class="footer-note">
+        <span>ReconcilePro Platform Documentation</span>
+        <span>Module: backend/reconciliation/reconcile.py &bull; Page 2</span>
+    </div>
+</div>
+
+<!-- ================= PAGE 3: SET PARTITIONING & 1:1 MATCHING ================= -->
+<div class="page">
+    <h2><span class="num">4</span> Mathematical Set Partitioning & 1:1 Matching</h2>
+    <p>
+        The engine projects the cleaned invoice identifiers into Python hash sets, achieving theoretical $O(N + M)$ performance for discrepancy identification.
+    </p>
+
+    <pre class="code-block">    my_inv = <span class="fn">set</span>(my_df[<span class="str">"invoice_no"</span>]) <span class="kw">if not</span> my_df.empty <span class="kw">else</span> <span class="fn">set</span>()
+    gst_inv = <span class="fn">set</span>(gst_df[<span class="str">"invoice_no"</span>]) <span class="kw">if not</span> gst_df.empty <span class="kw">else</span> <span class="fn">set</span>()
+
+    common = my_inv &amp; gst_inv      <span class="cm"># S_my ∩ S_gst: Invoices present in both</span>
+    only_my = my_inv - gst_inv     <span class="cm"># S_my \ S_gst: Present in books, absent on portal</span>
+    only_gst = gst_inv - my_inv    <span class="cm"># S_gst \ S_my: Present on portal, absent in books</span></pre>
+
+    <h3>1-to-1 Match & Mathematical Tolerance Verification</h3>
+    <p>
+        When an invoice appears exactly once in the internal books (<code class="inline">n_my == 1</code>) and exactly once on the GST portal (<code class="inline">n_gst == 1</code>), the engine performs arithmetic difference verification:
+    </p>
+
+    <pre class="code-block">    <span class="kw">for</span> inv <span class="kw">in</span> <span class="fn">sorted</span>(common):
+        my_matches = my_df[my_df[<span class="str">"invoice_no"</span>] == inv]
+        gst_matches = gst_df[gst_df[<span class="str">"invoice_no"</span>] == inv]
+        n_my = <span class="fn">len</span>(my_matches)
+        n_gst = <span class="fn">len</span>(gst_matches)
+
+        <span class="kw">if</span> n_my == <span class="num-lit">1</span> <span class="kw">and</span> n_gst == <span class="num-lit">1</span>:
+            a = my_matches.<span class="fn">iloc</span>[<span class="num-lit">0</span>]
+            b = gst_matches.<span class="fn">iloc</span>[<span class="num-lit">0</span>]
+
+            a_tv = <span class="fn">float</span>(a[<span class="str">"taxable_value"</span>])
+            b_tv = <span class="fn">float</span>(b[<span class="str">"taxable_value"</span>])
+            a_gst = <span class="fn">float</span>(a[<span class="str">"gst_amount"</span>])
+            b_gst = <span class="fn">float</span>(b[<span class="str">"gst_amount"</span>])
+
+            tv_diff = <span class="fn">round</span>(a_tv - b_tv, <span class="num-lit">2</span>)
+            gst_diff = <span class="fn">round</span>(a_gst - b_gst, <span class="num-lit">2</span>)
+
+            <span class="kw">if</span> tv_diff == <span class="num-lit">0</span> <span class="kw">and</span> gst_diff == <span class="num-lit">0</span>:
+                status = <span class="str">"MATCH"</span>
+                explanation = <span class="str">"Invoice matched across both internal records and GST portal."</span>
+                category = <span class="str">"MATCH"</span>
+                possible_causes = []
+                action = <span class="str">"No action required. Reconciled successfully."</span>
+            <span class="kw">else</span>:
+                status = <span class="str">"MISMATCH"</span>
+                diff_reasons = []
+                <span class="kw">if</span> tv_diff != <span class="num-lit">0</span>:
+                    diff_reasons.<span class="fn">append</span>(<span class="str">f"Taxable value differs by Rs. {abs(tv_diff):,.2f}"</span>)
+                <span class="kw">if</span> gst_diff != <span class="num-lit">0</span>:
+                    diff_reasons.<span class="fn">append</span>(<span class="str">f"GST amount differs by Rs. {abs(gst_diff):,.2f}"</span>)
+                explanation = <span class="str">". "</span>.<span class="fn">join</span>(diff_reasons) + <span class="str">" between internal books and GST filing."</span>
+                category = (<span class="str">"TAXABLE_AND_GST_MISMATCH"</span> <span class="kw">if</span> (tv_diff != <span class="num-lit">0</span> <span class="kw">and</span> gst_diff != <span class="num-lit">0</span>) 
+                            <span class="kw">else</span> (<span class="str">"TAXABLE_VALUE_MISMATCH"</span> <span class="kw">if</span> tv_diff != <span class="num-lit">0</span> <span class="kw">else</span> <span class="str">"GST_AMOUNT_MISMATCH"</span>))
+                possible_causes = [
+                    <span class="str">"Hypothesis: Data entry discrepancy in taxable value or rate in internal ledger."</span>,
+                    <span class="str">"Hypothesis: Commercial discount or credit/debit note applied on one side only."</span>,
+                    <span class="str">"Hypothesis: Rounding difference across line items."</span>,
+                ]
+                action = <span class="str">"Compare physical invoice copy against filed portal return. Request amendment or credit/debit note if needed."</span></pre>
+
+    <div class="card amber">
+        <div class="callout-title">Root Cause Hypotheses & Actionable Remediation</div>
+        <p style="font-size:8.5pt;">
+            Rather than simply returning a boolean flag, the engine populates structured diagnostic metadata (<code class="inline">explanation</code>, <code class="inline">discrepancy_category</code>, <code class="inline">possible_causes</code>, <code class="inline">suggested_action</code>). This enables accounting clerks to immediately know what steps to take (e.g., verifying physical copies, issuing credit notes, or updating internal rates).
+        </p>
+    </div>
+
+    <div class="footer-note">
+        <span>ReconcilePro Platform Documentation</span>
+        <span>Module: backend/reconciliation/reconcile.py &bull; Page 3</span>
+    </div>
+</div>
+
+<!-- ================= PAGE 4: DUPLICATE RESOLUTION & MISSING/EXTRA HANDLING ================= -->
+<div class="page">
+    <h2><span class="num">5</span> Safe Duplicate Resolution Algorithm</h2>
+    <p>
+        In traditional naive reconciliation algorithms, a common bug occurs when an invoice number appears more than once: calling <code class="inline">.iloc[0]</code> silently discards subsequent rows, hiding duplicate billings and causing serious compliance exposure. <code class="inline">reconcile.py</code> implements a comprehensive zero-loss duplicate pair algorithm.
+    </p>
+
+    <pre class="code-block">        <span class="kw">else</span>:
+            <span class="cm"># Safe duplicate handling: preserve every row without silent .iloc[0] drop</span>
+            max_len = <span class="fn">max</span>(n_my, n_gst)
+            <span class="kw">for</span> idx <span class="kw">in</span> <span class="fn">range</span>(max_len):
+                a = my_matches.<span class="fn">iloc</span>[idx] <span class="kw">if</span> idx &lt; n_my <span class="kw">else</span> <span class="cls">None</span>
+                b = gst_matches.<span class="fn">iloc</span>[idx] <span class="kw">if</span> idx &lt; n_gst <span class="kw">else</span> <span class="cls">None</span>
+
+                a_tv = <span class="fn">float</span>(a[<span class="str">"taxable_value"</span>]) <span class="kw">if</span> a <span class="kw">is not</span> <span class="cls">None</span> <span class="kw">else</span> <span class="cls">None</span>
+                b_tv = <span class="fn">float</span>(b[<span class="str">"taxable_value"</span>]) <span class="kw">if</span> b <span class="kw">is not</span> <span class="cls">None</span> <span class="kw">else</span> <span class="cls">None</span>
+                a_gst = <span class="fn">float</span>(a[<span class="str">"gst_amount"</span>]) <span class="kw">if</span> a <span class="kw">is not</span> <span class="cls">None</span> <span class="kw">else</span> <span class="cls">None</span>
+                b_gst = <span class="fn">float</span>(b[<span class="str">"gst_amount"</span>]) <span class="kw">if</span> b <span class="kw">is not</span> <span class="cls">None</span> <span class="kw">else</span> <span class="cls">None</span>
+
+                tv_diff = <span class="fn">round</span>(a_tv - b_tv, <span class="num-lit">2</span>) <span class="kw">if</span> (a_tv <span class="kw">is not</span> <span class="cls">None</span> <span class="kw">and</span> b_tv <span class="kw">is not</span> <span class="cls">None</span>) <span class="kw">else</span> <span class="cls">None</span>
+                gst_diff = <span class="fn">round</span>(a_gst - b_gst, <span class="num-lit">2</span>) <span class="kw">if</span> (a_gst <span class="kw">is not</span> <span class="cls">None</span> <span class="kw">and</span> b_gst <span class="kw">is not</span> <span class="cls">None</span>) <span class="kw">else</span> <span class="cls">None</span>
+
+                explanation = <span class="str">f"Duplicate invoice number '{inv}' detected ({n_my} in books, {n_gst} in GST). Requires manual review."</span>
+                category = <span class="str">"DUPLICATE_INVOICE"</span></pre>
+
+    <h2><span class="num">6</span> Partition Asymmetries: MISSING_IN_GST & EXTRA_IN_GST</h2>
+
+    <div class="grid-2">
+        <div class="card rose">
+            <div class="callout-title">MISSING_IN_GST (only_my)</div>
+            <p style="font-size:8.5pt;">
+                <strong>Detection:</strong> <code class="inline">inv in (my_inv - gst_inv)</code>
+                <br><strong>Sales Context:</strong> Invoice recorded in enterprise sales register was not uploaded to GSTR-1. Leads to tax underpayment penalties under Section 50.
+                <br><strong>Purchase Context:</strong> Vendor failed to file their GSTR-1 before statutory cut-off. <strong>ITC is blocked</strong> under Section 16(2)(aa).
+                <br><strong>Remediation:</strong> Push invoice to next GSTR-1 period or follow up with vendor.
+            </p>
+        </div>
+        <div class="card purple">
+            <div class="callout-title">EXTRA_IN_GST (only_gst)</div>
+            <p style="font-size:8.5pt;">
+                <strong>Detection:</strong> <code class="inline">inv in (gst_inv - my_inv)</code>
+                <br><strong>Sales Context:</strong> Invoice exists on portal but missing in ERP. Possible unrecorded cash sale or wrong GSTIN entered during return submission.
+                <br><strong>Purchase Context:</strong> Vendor uploaded an invoice that the business has not booked. May represent goods in transit, unbooked bill, or wrong buyer GSTIN.
+                <br><strong>Remediation:</strong> Inspect delivery challans; enter in purchase journal or request counterparty cancel wrong entry.
+            </p>
+        </div>
+    </div>
+
+    <h2><span class="num">7</span> Function 3: <code class="inline">show_result(title, df)</code></h2>
+    <p>Provides terminal formatting and summary telemetry for standalone execution:</p>
+    <pre class="code-block"><span class="kw">def</span> <span class="fn">show_result</span>(title, df):
+    <span class="fn">print</span>(<span class="str">"\n"</span> + <span class="str">"="</span> * <span class="num-lit">60</span>)
+    <span class="fn">print</span>(title)
+    <span class="fn">print</span>(<span class="str">"="</span> * <span class="num-lit">60</span>)
+    <span class="fn">print</span>(df.<span class="fn">to_string</span>(index=<span class="cls">False</span>))
+    <span class="fn">print</span>(<span class="str">"\nSummary:"</span>)
+    <span class="fn">print</span>(df[<span class="str">"status"</span>].<span class="fn">value_counts</span>())</pre>
+
+    <div class="footer-note">
+        <span>ReconcilePro Platform Documentation</span>
+        <span>Module: backend/reconciliation/reconcile.py &bull; Page 4</span>
+    </div>
+</div>
+
+<!-- ================= PAGE 5: SYSTEM INTEGRATION & VERIFICATION ================= -->
+<div class="page">
+    <h2><span class="num">8</span> End-to-End System Integration Flow</h2>
+    <p>
+        How <code class="inline">reconcile.py</code> integrates across the ReconcilePro architecture:
+    </p>
+
+    <div class="diagram-box">
+┌─────────────────────────┐
+│     React Frontend      │  User requests reconciliation via UI with optional tax_period filter
+└───────────┬─────────────┘
+            │  GET /reconcile?tax_period=2026-07&purchase_source=gstr2a
+            ▼
+┌─────────────────────────┐
+│  FastAPI Backend Route  │  Validates JWT session, extracts active business_id
+│ (routers/reconciliation)│  Queries PostgreSQL/SQLite: SELECT * FROM invoices WHERE business_id = X
+└───────────┬─────────────┘
+            │  Extracts Pandas DataFrames: my_df (register) and gst_df (portal)
+            ▼
+┌─────────────────────────┐
+│  reconcile.py Engine    │  Executes schema validation, set partition, arithmetic comparison,
+│  reconcile(my, gst)     │  and generates explanation, discrepancy_category, suggested_action
+└───────────┬─────────────┘
+            │  Returns consolidated audit DataFrame
+            ▼
+┌─────────────────────────┐
+│    ML Anomaly Service   │  Computes Risk Score (0-100), detects cross-form ratio anomalies,
+│  (services/ml_service)  │  and tags high-risk discrepancies
+└───────────┬─────────────┘
+            │  Serializes to JSON
+            ▼
+┌─────────────────────────┐
+│  Interactive Dashboard  │  Displays interactive summary cards, filtered tables, and export options
+└─────────────────────────┘
+    </div>
+
+    <h2><span class="num">9</span> Output Schema Reference Table</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Column Name</th>
+                <th>Data Type</th>
+                <th>Description / Purpose</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><code class="inline">invoice_no</code></td>
+                <td>String</td>
+                <td>Normalized, trimmed invoice identifier string.</td>
+            </tr>
+            <tr>
+                <td><code class="inline">invoice_date</code></td>
+                <td>String (YYYY-MM-DD)</td>
+                <td>Date of document issuance.</td>
+            </tr>
+            <tr>
+                <td><code class="inline">gstin</code></td>
+                <td>String (15-char)</td>
+                <td>Counterparty GSTIN extracted via <code class="inline">_extract_gstin</code>.</td>
+            </tr>
+            <tr>
+                <td><code class="inline">expected_taxable_value</code></td>
+                <td>Float / Null</td>
+                <td>Taxable value recorded in internal accounts register.</td>
+            </tr>
+            <tr>
+                <td><code class="inline">actual_taxable_value</code></td>
+                <td>Float / Null</td>
+                <td>Taxable value reported on government GST portal return.</td>
+            </tr>
+            <tr>
+                <td><code class="inline">taxable_value_diff</code></td>
+                <td>Float / Null</td>
+                <td>Arithmetic variance: <code class="inline">round(expected - actual, 2)</code>.</td>
+            </tr>
+            <tr>
+                <td><code class="inline">expected_gst_amount</code></td>
+                <td>Float / Null</td>
+                <td>GST amount (CGST + SGST + IGST) recorded in internal accounts.</td>
+            </tr>
+            <tr>
+                <td><code class="inline">actual_gst_amount</code></td>
+                <td>Float / Null</td>
+                <td>GST amount reported on GST portal return.</td>
+            </tr>
+            <tr>
+                <td><code class="inline">gst_amount_diff</code></td>
+                <td>Float / Null</td>
+                <td>Arithmetic variance: <code class="inline">round(expected_gst - actual_gst, 2)</code>.</td>
+            </tr>
+            <tr>
+                <td><code class="inline">status</code></td>
+                <td>Enum String</td>
+                <td>Primary classification: <code class="inline">MATCH</code>, <code class="inline">MISMATCH</code>, <code class="inline">MISSING_IN_GST</code>, <code class="inline">EXTRA_IN_GST</code>.</td>
+            </tr>
+            <tr>
+                <td><code class="inline">discrepancy_category</code></td>
+                <td>Enum String</td>
+                <td>Specific taxonomy (e.g., <code class="inline">TAXABLE_AND_GST_MISMATCH</code>, <code class="inline">DUPLICATE_INVOICE</code>).</td>
+            </tr>
+            <tr>
+                <td><code class="inline">explanation</code></td>
+                <td>String</td>
+                <td>Human-readable audit sentence detailing variances.</td>
+            </tr>
+            <tr>
+                <td><code class="inline">possible_causes</code></td>
+                <td>List[String]</td>
+                <td>Plausible bookkeeping or filing hypotheses.</td>
+            </tr>
+            <tr>
+                <td><code class="inline">suggested_action</code></td>
+                <td>String</td>
+                <td>Statutory compliance next step for the finance team.</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div class="footer-note">
+        <span>ReconcilePro Platform Documentation</span>
+        <span>Module: backend/reconciliation/reconcile.py &bull; Page 5</span>
+    </div>
+</div>
+
+</body>
+</html>
+"""
+
+# Write HTML file
+with open(HTML_PATH, "w", encoding="utf-8") as f:
+    f.write(html_content)
+
+print(f"Generated HTML at {HTML_PATH}")
+
+# Run Microsoft Edge headless to print to PDF
+cmd = [
+    EDGE_EXE,
+    "--headless",
+    "--disable-gpu",
+    "--no-pdf-header-footer",
+    f"--print-to-pdf={PDF_PATH}",
+    str(HTML_PATH)
+]
+
+print("Compiling PDF with Microsoft Edge headless...")
+result = subprocess.run(cmd, capture_output=True, text=True)
+if PDF_PATH.exists() and PDF_PATH.stat().st_size > 0:
+    print(f"PDF generated successfully: {PDF_PATH} ({PDF_PATH.stat().st_size} bytes)")
+else:
+    print(f"Failed to generate PDF. Edge stderr: {result.stderr}")

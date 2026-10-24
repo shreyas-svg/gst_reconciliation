@@ -17,12 +17,13 @@ for p in env_candidates:
         load_dotenv(p)
         break
 
-from database import engine
+from database import engine, run_migrations
 from models import models
 from models.base import Base
 from routers.anomalies import router as anomalies_router
 from routers.auth import router as auth_router
 from routers.gstr3b import router as gstr3b_router
+from routers.imports import router as imports_router
 from routers.invoices import router as invoices_router, upload_csv
 from routers.reconciliation import router as reconciliation_router
 from routers.reports import router as reports_router
@@ -37,8 +38,8 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     # Initialize database schema safely during application lifespan startup
     try:
-        Base.metadata.create_all(bind=engine)
-        logger.info("Database schema verified and initialized.")
+        run_migrations(engine)
+        logger.info("Database schema and migrations verified and initialized.")
     except Exception as _schema_exc:
         logger.warning(
             "Database schema initialisation skipped at startup: %s — using test/offline mode.",
@@ -83,6 +84,7 @@ app.include_router(auth_router)
 app.include_router(reconciliation_router)
 app.include_router(gstr3b_router)
 app.include_router(invoices_router)
+app.include_router(imports_router)
 app.include_router(anomalies_router)
 app.include_router(reports_router)
 
@@ -118,6 +120,7 @@ def home():
             "/gstr3b/summary",
             "/invoices",
             "/invoices/upload",
+            "/imports",
             "/anomalies",
             "/reports/summary",
             "/reports/export",
@@ -132,3 +135,4 @@ def health():
         "status": "ok",
         "database": "connected",
     }
+

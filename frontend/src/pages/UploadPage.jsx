@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { UploadCloud, AlertCircle, FileCheck, FileText, ArrowRight, ShieldCheck } from "lucide-react";
+import { UploadCloud, AlertCircle, FileCheck, FileText, ArrowRight, ShieldCheck, History } from "lucide-react";
 import { api } from "../api/client";
 
-export function UploadPage({ onUploadSuccess }) {
+export function UploadPage({ onUploadSuccess, onNavigate }) {
   const [sourceType, setSourceType] = useState("sales_register");
   const [selectedFile, setSelectedFile] = useState(null);
   const [uploading, setUploading] = useState(false);
@@ -104,9 +104,22 @@ export function UploadPage({ onUploadSuccess }) {
             Upload internal registers, supplier filing statements, and monthly summary returns to synchronize your database
           </p>
         </div>
-        <div className="section-badge">
-          <ShieldCheck size={13} />
-          <span>Active Tenant Storage (Local Mode)</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {onNavigate && (
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => onNavigate("history")}
+              style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}
+            >
+              <History size={14} color="#ea580c" />
+              <span>Import History</span>
+            </button>
+          )}
+          <div className="section-badge">
+            <ShieldCheck size={13} />
+            <span>Active Tenant Storage (Local Mode)</span>
+          </div>
         </div>
       </div>
 
@@ -226,9 +239,30 @@ export function UploadPage({ onUploadSuccess }) {
         {/* Validation & Ingestion Results */}
         {result && (
           <div className="upload-results-panel">
-            <div className="results-header">
-              <FileCheck size={20} color="#059669" />
-              <h4>Validation & Ingestion Report</h4>
+            <div className="results-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <FileCheck size={20} color="#059669" />
+                <h4>Validation & Ingestion Report</h4>
+              </div>
+              {result.batch_id && (
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Batch:</span>
+                  <code style={{ fontSize: 12, backgroundColor: "#f1f5f9", padding: "2px 6px", borderRadius: 4 }}>
+                    {result.batch_id}
+                  </code>
+                  {onNavigate && (
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={() => onNavigate("history")}
+                      style={{ fontSize: 11, padding: "3px 8px", display: "flex", alignItems: "center", gap: 4 }}
+                    >
+                      <History size={12} />
+                      View in History
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
 
             {result.message && (

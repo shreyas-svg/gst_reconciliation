@@ -26,7 +26,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models.models import Business, Invoice
+from models.models import Business, Gstr3bSummary, Invoice
 from services.auth import get_current_business
 
 router = APIRouter(prefix="/gstr3b", tags=["GSTR-3B"])
@@ -100,11 +100,41 @@ def gstr3b_summary(
 ):
     """
     Returns GSTR-3B summary figures for the given tax period.
-    Data is sourced from the GSTR-3B CSV file (represents filed return values).
-    For multi-business setups, only business_id == 1 has sample data; others
-    return zeros to prevent fabricating values for tenants with no GSTR-3B file.
+    Checks database-persisted tenant summary records first.
+    For multi-business setups, only business_id == 1 has sample CSV data fallback;
+    others return zeros to prevent fabricating values for tenants with no GSTR-3B filing.
     """
     resolved_period_str, _, _ = _validate_tax_period(tax_period)
+    target_period = resolved_period_str or (tax_period.strip() if tax_period else None)
+
+    # 1. Check database for business-specific GSTR-3B summary records
+    db_summary = None
+    if target_period:
+        db_summary = db.scalar(
+            select(Gstr3bSummary).where(
+                Gstr3bSummary.business_id == current_business.id,
+                Gstr3bSummary.tax_period == target_period,
+            )
+        )
+    else:
+        db_summary = db.scalar(
+            select(Gstr3bSummary)
+            .where(Gstr3bSummary.business_id == current_business.id)
+            .order_by(Gstr3bSummary.tax_period.desc(), Gstr3bSummary.id.desc())
+        )
+
+    if db_summary:
+        return {
+            "business_id": current_business.id,
+            "tax_period": db_summary.tax_period,
+            "output_tax": float(db_summary.output_tax),
+            "eligible_itc": float(db_summary.eligible_itc),
+            "itc_reversed": float(db_summary.itc_reversed),
+            "net_itc": float(db_summary.net_itc),
+            "data_available": True,
+        }
+
+    # 2. Fall back to sample CSV file for demo business (id == 1)
     row, period = _load_gstr3b_row(resolved_period_str or tax_period)
     resolved_period = resolved_period_str or period or (tax_period.strip() if tax_period else "2026-07")
 
@@ -151,9 +181,25 @@ def gstr3b_cross_form(
     """
     period_str, start_date, end_date = _validate_tax_period(tax_period)
 
-    # Load GSTR-3B CSV row
+    # Check database Gstr3bSummary first
+    db_summary = None
+    if period_str:
+        db_summary = db.scalar(
+            select(Gstr3bSummary).where(
+                Gstr3bSummary.business_id == current_business.id,
+                Gstr3bSummary.tax_period == period_str,
+            )
+        )
+    else:
+        db_summary = db.scalar(
+            select(Gstr3bSummary)
+            .where(Gstr3bSummary.business_id == current_business.id)
+            .order_by(Gstr3bSummary.tax_period.desc(), Gstr3bSummary.id.desc())
+        )
+
+    # Load GSTR-3B CSV row as fallback
     gstr3b_row, csv_period = _load_gstr3b_row(period_str)
-    resolved_period = period_str or csv_period or "2026-07"
+    resolved_period = period_str or (db_summary.tax_period if db_summary else None) or csv_period or "2026-07"
 
     # Load DB invoice sums for this business
     try:
@@ -178,13 +224,20 @@ def gstr3b_cross_form(
     has_db_data = bool(db_sums)
 
     # GSTR-3B declared values
-    gstr3b_available = (gstr3b_row is not None) and (current_business.id == 1)
-    if gstr3b_available:
+    if db_summary:
+        gstr3b_available = True
+        gstr3b_output_tax = float(db_summary.output_tax)
+        gstr3b_eligible_itc = float(db_summary.eligible_itc)
+        gstr3b_itc_reversed = float(db_summary.itc_reversed)
+        gstr3b_net_itc = float(db_summary.net_itc)
+    elif gstr3b_row is not None and current_business.id == 1:
+        gstr3b_available = True
         gstr3b_output_tax = float(gstr3b_row["output_tax"])
         gstr3b_eligible_itc = float(gstr3b_row["eligible_itc"])
         gstr3b_itc_reversed = float(gstr3b_row["itc_reversed"])
         gstr3b_net_itc = float(gstr3b_row["net_itc"])
     else:
+        gstr3b_available = False
         gstr3b_output_tax = gstr3b_eligible_itc = gstr3b_itc_reversed = gstr3b_net_itc = 0.0
 
     # ── Cross-form comparison 1: Output tax liability ──

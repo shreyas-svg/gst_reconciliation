@@ -63,9 +63,52 @@ engine = _build_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 
 
+def run_migrations(target_engine=None):
+    """
+    Safely and idempotently ensure all tables and columns exist in the database.
+    Handles schema migrations for import batches and audit logs without data loss.
+    """
+    from sqlalchemy import inspect
+    from models.base import Base
+    import models.models  # ensure all models are registered with Base.metadata
+
+    eng = target_engine or engine
+    # 1. Create any missing tables defined in metadata
+    Base.metadata.create_all(bind=eng)
+
+    # 2. Check and alter invoices table for added columns if upgrading an existing DB
+    try:
+        inspector = inspect(eng)
+        table_names = inspector.get_table_names()
+        if "invoices" in table_names:
+            cols = {col["name"] for col in inspector.get_columns("invoices")}
+            with eng.begin() as conn:
+                if "import_batch_id" not in cols:
+                    logger.info("Migrating schema: adding import_batch_id column to invoices table.")
+                    conn.execute(text("ALTER TABLE invoices ADD COLUMN import_batch_id VARCHAR(64)"))
+                    try:
+                        conn.execute(text("CREATE INDEX ix_invoices_import_batch_id ON invoices (import_batch_id)"))
+                    except Exception:
+                        pass
+                if "updated_at" not in cols:
+                    logger.info("Migrating schema: adding updated_at column to invoices table.")
+                    conn.execute(text("ALTER TABLE invoices ADD COLUMN updated_at DATETIME"))
+    except Exception as mig_err:
+        logger.warning("Schema migration warning: %s", mig_err)
+
+
+# Run migrations once on engine initialization
+try:
+    run_migrations(engine)
+except Exception as _init_mig_err:
+    logger.warning("Initial database migration warning: %s", _init_mig_err)
+
+
 def get_db():
     db = SessionLocal()
     try:
         yield db
     finally:
         db.close()
+
+

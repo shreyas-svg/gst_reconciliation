@@ -16,6 +16,7 @@ import { Gstr3bPage } from "./pages/Gstr3bPage";
 import { AnomaliesPage } from "./pages/AnomaliesPage";
 import { InvoicesPage } from "./pages/InvoicesPage";
 import { UploadPage } from "./pages/UploadPage";
+import { ImportHistoryPage } from "./pages/ImportHistoryPage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 
@@ -284,6 +285,14 @@ export function App() {
                 <UploadPage
                   key={activeBusiness?.id}
                   onUploadSuccess={() => loadDashboardData(true)}
+                  onNavigate={setCurrentTab}
+                />
+              )}
+
+              {currentTab === "history" && (
+                <ImportHistoryPage
+                  key={activeBusiness?.id}
+                  onUndoSuccess={() => loadDashboardData(true)}
                 />
               )}
 

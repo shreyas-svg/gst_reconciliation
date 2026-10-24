@@ -1,4 +1,5 @@
 import io
+import uuid
 from datetime import datetime
 from typing import List, Optional
 import pandas as pd
@@ -8,8 +9,8 @@ from sqlalchemy.orm import Session
 
 from pathlib import Path
 from database import get_db
-from models.models import Business, Invoice
-from services.auth import get_current_business
+from models.models import Business, Gstr3bSummary, ImportAuditLog, ImportBatch, Invoice, User
+from services.auth import get_current_business, get_current_user
 from services.validation import (
     normalize_gstr3b_dataframe,
     normalize_invoice_dataframe,
@@ -65,6 +66,7 @@ def list_invoices(
                 "source": inv.source,
                 "created_at": inv.created_at.isoformat() if inv.created_at else None,
                 "business_id": inv.business_id,
+                "import_batch_id": inv.import_batch_id,
             }
             for inv in invoices
         ],
@@ -95,6 +97,7 @@ def get_invoice(
         "gst_amount": invoice.gst_amount,
         "source": invoice.source,
         "created_at": invoice.created_at.isoformat() if invoice.created_at else None,
+        "import_batch_id": invoice.import_batch_id,
         "business": {
             "id": current_business.id,
             "name": current_business.name,
@@ -108,6 +111,7 @@ async def upload_csv(
     file: UploadFile = File(...),
     source_type: str = Form(..., description="sales_register, gstr1, purchase_register, gstr2a, gstr2b, or gstr3b"),
     current_business: Business = Depends(get_current_business),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     valid_sources = {"sales_register", "gstr1", "purchase_register", "gstr2a", "gstr2b", "gstr3b"}
@@ -140,8 +144,27 @@ async def upload_csv(
     # Strip any stray BOM or leading/trailing whitespace from column names
     df.columns = [str(c).replace("\ufeff", "").strip() for c in df.columns]
 
+    batch_id = f"imp_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex[:8]}"
+
     if df.empty:
+        # Create empty batch record for transparency
+        empty_batch = ImportBatch(
+            batch_id=batch_id,
+            business_id=current_business.id,
+            source_type=norm_source,
+            filename=file.filename or f"{norm_source}.csv",
+            total_rows=0,
+            imported_rows=0,
+            duplicate_rows=0,
+            rejected_rows=0,
+            status="COMPLETED",
+            notes="Empty CSV file",
+        )
+        db.add(empty_batch)
+        db.commit()
+
         return {
+            "batch_id": batch_id,
             "file_name": file.filename,
             "source_type": norm_source,
             "business_id": current_business.id,
@@ -170,7 +193,22 @@ async def upload_csv(
         rejected = 0
         validation_errors: List[str] = []
 
-        # Load existing summary file if available
+        # Create import batch tracking entry
+        batch = ImportBatch(
+            batch_id=batch_id,
+            business_id=current_business.id,
+            source_type="gstr3b",
+            filename=file.filename or "gstr3b.csv",
+            total_rows=total_records,
+            imported_rows=0,
+            duplicate_rows=0,
+            rejected_rows=0,
+            status="COMPLETED",
+        )
+        db.add(batch)
+        db.flush()
+
+        # Load existing summary file if available for file synchronization
         gstr3b_path = DATA_DIR / "gstr3b.csv"
         existing_df = pd.DataFrame()
         if gstr3b_path.exists():
@@ -195,24 +233,48 @@ async def upload_csv(
             itc_rev = float(row_dict.get("itc_reversed", 0.0) or 0.0)
             net_itc = float(row_dict.get("net_itc", el_itc - itc_rev))
 
-            # Check if this exact tax_period already exists
+            # Database duplicate check for active business
+            existing_db_summary = db.scalar(
+                select(Gstr3bSummary).where(
+                    Gstr3bSummary.business_id == current_business.id,
+                    Gstr3bSummary.tax_period == period,
+                )
+            )
+            if existing_db_summary and (
+                float(existing_db_summary.output_tax) == out_tax
+                and float(existing_db_summary.eligible_itc) == el_itc
+                and float(existing_db_summary.itc_reversed) == itc_rev
+                and float(existing_db_summary.net_itc) == net_itc
+            ):
+                duplicates += 1
+                continue
+
+            # Store in database associated with this batch
+            if existing_db_summary:
+                # Update existing record and track update
+                existing_db_summary.output_tax = out_tax
+                existing_db_summary.eligible_itc = el_itc
+                existing_db_summary.itc_reversed = itc_rev
+                existing_db_summary.net_itc = net_itc
+                existing_db_summary.import_batch_id = batch_id
+            else:
+                summary_record = Gstr3bSummary(
+                    business_id=current_business.id,
+                    tax_period=period,
+                    output_tax=out_tax,
+                    eligible_itc=el_itc,
+                    itc_reversed=itc_rev,
+                    net_itc=net_itc,
+                    import_batch_id=batch_id,
+                )
+                db.add(summary_record)
+
+            # Update file rows for compatibility with demo readers
             match_idx = None
-            is_exact_dup = False
             for i, existing_row in enumerate(rows_to_save):
                 if str(existing_row.get("tax_period")).strip() == period:
                     match_idx = i
-                    if (
-                        float(existing_row.get("output_tax", 0)) == out_tax
-                        and float(existing_row.get("eligible_itc", 0)) == el_itc
-                        and float(existing_row.get("itc_reversed", 0)) == itc_rev
-                        and float(existing_row.get("net_itc", 0)) == net_itc
-                    ):
-                        is_exact_dup = True
                     break
-
-            if is_exact_dup:
-                duplicates += 1
-                continue
 
             summary_item = {
                 "tax_period": period,
@@ -221,7 +283,6 @@ async def upload_csv(
                 "itc_reversed": itc_rev,
                 "net_itc": net_itc,
             }
-
             if match_idx is not None:
                 rows_to_save[match_idx] = summary_item
             else:
@@ -234,12 +295,24 @@ async def upload_csv(
                 DATA_DIR.mkdir(parents=True, exist_ok=True)
                 pd.DataFrame(rows_to_save).to_csv(gstr3b_path, index=False)
             except Exception as write_err:
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail=f"Failed to persist GSTR-3B summary records: {str(write_err)}",
-                )
+                logger.warning("Failed to sync GSTR-3B CSV file: %s", write_err)
+
+        batch.imported_rows = imported
+        batch.duplicate_rows = duplicates
+        batch.rejected_rows = rejected
+
+        audit = ImportAuditLog(
+            business_id=current_business.id,
+            user_id=current_user.id,
+            batch_id=batch_id,
+            action="IMPORT_CSV",
+            details=f"Imported {imported} of {total_records} GSTR-3B monthly summary period(s) from '{file.filename}'.",
+        )
+        db.add(audit)
+        db.commit()
 
         return {
+            "batch_id": batch_id,
             "file_name": file.filename,
             "source_type": "gstr3b",
             "business_id": current_business.id,
@@ -267,6 +340,21 @@ async def upload_csv(
     rejected = 0
     validation_errors: List[str] = []
     seen_in_batch = set()
+
+    # Create import batch tracking entry
+    batch = ImportBatch(
+        batch_id=batch_id,
+        business_id=current_business.id,
+        source_type=norm_source,
+        filename=file.filename or f"{norm_source}.csv",
+        total_rows=total_records,
+        imported_rows=0,
+        duplicate_rows=0,
+        rejected_rows=0,
+        status="COMPLETED",
+    )
+    db.add(batch)
+    db.flush()
 
     for idx, row in norm_df.iterrows():
         row_dict = row.to_dict()
@@ -308,10 +396,12 @@ async def upload_csv(
             )
         )
         if existing:
+            # DO NOT re-associate pre-existing record with the new batch
             duplicates += 1
             seen_in_batch.add(batch_key)
             continue
 
+        # Associate newly imported database record with its import batch ID
         invoice = Invoice(
             invoice_no=invoice_no,
             invoice_date=inv_date,
@@ -320,14 +410,28 @@ async def upload_csv(
             gst_amount=gst_amount,
             source=norm_source,
             business_id=current_business.id,
+            import_batch_id=batch_id,
         )
         db.add(invoice)
         seen_in_batch.add(batch_key)
         imported += 1
 
+    batch.imported_rows = imported
+    batch.duplicate_rows = duplicates
+    batch.rejected_rows = rejected
+
+    audit = ImportAuditLog(
+        business_id=current_business.id,
+        user_id=current_user.id,
+        batch_id=batch_id,
+        action="IMPORT_CSV",
+        details=f"Imported {imported} of {total_records} invoice(s) from '{file.filename}' for source '{norm_source}'.",
+    )
+    db.add(audit)
     db.commit()
 
     return {
+        "batch_id": batch_id,
         "file_name": file.filename,
         "source_type": norm_source,
         "business_id": current_business.id,
@@ -340,4 +444,5 @@ async def upload_csv(
         "errors": validation_errors[:50],  # Cap preview errors
         "message": f"Processed {total_records} records: {imported} imported, {duplicates} duplicates, {rejected} rejected ({len(validation_errors)} findings).",
     }
+
 

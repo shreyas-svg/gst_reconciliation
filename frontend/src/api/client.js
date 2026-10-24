@@ -318,4 +318,34 @@ export const api = {
     }
     return url;
   },
+
+  // Import History & Undo Endpoints
+  async getImportBatches(params = {}) {
+    const searchParams = new URLSearchParams();
+    if (params.source_type) searchParams.append("source_type", params.source_type);
+    if (params.status) searchParams.append("status", params.status);
+    if (params.limit !== undefined) searchParams.append("limit", params.limit);
+    if (params.offset !== undefined) searchParams.append("offset", params.offset);
+
+    const qs = searchParams.toString();
+    const endpoint = `/imports${qs ? `?${qs}` : ""}`;
+    return await request(endpoint);
+  },
+
+  async getImportBatchDetails(batchId) {
+    return await request(`/imports/${encodeURIComponent(batchId)}`);
+  },
+
+  async previewUndoImport(batchId) {
+    return await request(`/imports/${encodeURIComponent(batchId)}/preview-undo`);
+  },
+
+  async undoImportBatch(batchId, { confirmed = false, notes = "" } = {}) {
+    return await request(`/imports/${encodeURIComponent(batchId)}/undo`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ confirmed, notes }),
+    });
+  },
 };
+

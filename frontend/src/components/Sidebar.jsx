@@ -12,6 +12,7 @@ import {
   Building2,
   LogOut,
   ShieldCheck,
+  History,
 } from "lucide-react";
 
 export function Sidebar({ currentTab, setCurrentTab, anomalyCount = 0, user, activeBusiness, onLogout }) {
@@ -23,6 +24,7 @@ export function Sidebar({ currentTab, setCurrentTab, anomalyCount = 0, user, act
     { id: "anomalies", label: "Anomaly Center", icon: AlertTriangle, section: "Audit & Risk", badge: anomalyCount },
     { id: "invoices", label: "Invoice Records", icon: FileText, section: "Data Management" },
     { id: "upload", label: "CSV Ingestion", icon: UploadCloud, section: "Data Management" },
+    { id: "history", label: "Import History", icon: History, section: "Data Management" },
     { id: "reports", label: "Reports & Export", icon: BarChart3, section: "Statutory Reporting" },
     { id: "settings", label: "Configuration", icon: Settings, section: "Settings" },
   ];
